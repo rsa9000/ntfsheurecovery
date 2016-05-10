@@ -1,0 +1,9 @@
+core
+*.o
+ntfsheurecovery
+untfspk
+*.log
+*.db
+.dep
+*.dig
+work

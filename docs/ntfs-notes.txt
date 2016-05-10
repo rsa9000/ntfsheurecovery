@@ -1,0 +1,257 @@
+Disclaimer: all following notes and tables are true for small set of disks,
+which I analyzed during tool development. Most of analyzed filesystems were
+created by NTFS driver from MS WinXPs.
+
+Attributes notes (mix of $AttrDef and own observations):
+
+              Always Log --------------------------------.
+                Multiple ----------------------------.   |
+                   Index ------------------------.   |   |
+                    Comp --------------------.   |   |   |
+                Resident ----------------.   |   |   |   |
+                  Extent ------------.   |   |   |   |   | - Could be found in extent $MFT entries
+                    Base --------.   |   |   |   |   |   | - Could be found in base $MFT entries
+                                 |   |   |   |   |   |   |
+Code   Name                      |   |   |   |   |   |   |   MinLen  MaxLen
+
+0x0010 $STANDARD_INFORMATION     +       !                   0x0030  0x0048
+0x0020 $ATTRIBUTE_LIST           +      +/-              +      n/a     n/a
+0x0030 $FILE_NAME                +       +       +   !       0x0044  0x0242
+0x0040 $OBJECT_ID                +       !                   0x0010  0x0040
+0x0050 $SECURITY_DESCRIPTOR      +      +/-              +      n/a     n/a
+0x0060 $VOLUME_NAME              +       !                   0x0002  0x0100
+0x0070 $VOLUME_INFORMATION       +       !                   0x000C  0x000C
+0x0080 $DATA                     +   +  +/-  +                  n/a     n/a
+0x0090 $INDEX_ROOT               +       !                      n/a     n/a
+0x00a0 $INDEX_ALLOCATION         +   +   -               +      n/a     n/a
+0x00b0 $BITMAP                   +      +/-              +      n/a     n/a
+0x00c0 $REPARSE_POINT            +       +               +      n/a  0x4000
+0x0100 $LOGGED_UTILITY_STREAM    +       +               +      n/a 0x10000
+
+Legend:
+  +  - Yes
+  -  - No
+  !  - Always (by $AttrDef)
+ n/a - No limitations
+
+File flags occurance ($STANDARD_INFORMATION and $FILE_NAME attributes)
+
+  READONLY(0x00000001) ------------------------------------------------------.  - Readonly file
+    HIDDEN(0x00000002) ---------------------------------------------------.  |  - File hidden
+    SYSTEM(0x00000004) ------------------------------------------------.  |  |  - System filef
+                   ...                                                 |  |  |
+   ARCHIVE(0x00000020) -------------------------------------------.    |  |  |  - Archive file
+    DEVICE(0x00000040) ----------------------------------------.  |    |  |  |  - Device file
+    NORMAL(0x00000080) -------------------------------------.  |  |    |  |  |  - Normal (regular) file
+      TEMP(0x00000100) ----------------------------------.  |  |  |    |  |  |  - Temporary file
+    SPARSE(0x00000200) -------------------------------.  |  |  |  |    |  |  |  - Sparse file
+    RPOINT(0x00000400) ----------------------------.  |  |  |  |  |    |  |  |  - Reparse point
+      COMP(0x00000800) -------------------------.  |  |  |  |  |  |    |  |  |  - Compressed file
+   OFFLINE(0x00001000) ----------------------.  |  |  |  |  |  |  |    |  |  |  - Offline?
+     NOIDX(0x00002000) -------------------.  |  |  |  |  |  |  |  |    |  |  |  - File content not indexed
+       ENC(0x00004000) ----------------.  |  |  |  |  |  |  |  |  |    |  |  |  - Encrypted file
+                   ...                 |  |  |  |  |  |  |  |  |  |    |  |  |
+   IDX_I30(0x10000000) -----------.    |  |  |  |  |  |  |  |  |  |    |  |  |  - Entry contains directory ($I30) index
+  IDX_VIEW(0x20000000) --------.  |    |  |  |  |  |  |  |  |  |  |    |  |  |  - Entry contains view index
+   UNKNOWN(0x80000000) -----.  |  |    |  |  |  |  |  |  |  |  |  |    |  |  |  - Seen only once on /$Extend/$RmMetadata/$Txf
+                            |  |  |    |  |  |  |  |  |  |  |  |  |    |  |  |
+      / MFT $STANDARD_INFO     +          +     +        +        +    +  +  +    0x20002927
+File {      MFT $FILE_NAME     +          +     +        +        +    +  +  +    0x20002927
+      \     Idx $FILE_NAME     +          +     +        +        +    +  +  +    0x20002927
+      / MFT $STANDARD_INFO  +     +       +     +  +              +    +  +  +    0x90002C27
+Dir  {      MFT $FILE_NAME        +       +     +                      +  +       0x10002806
+      \     Idx $FILE_NAME  +     +       +     +  +              +    +  +  +    0x90002C27
+
+Index                      Name  MinKey  MaxKey  MinData  MaxData  Files
+FS directory index         $I30      68     402        -        -  Each directory entry
+Security ID                $SII       4       4       20       20  $Secure and its extent entries
+Security Descriptor Hash   $SDH       8       8       20       20  $Secure and its extent entries
+OwnerID to quota             $Q       4       4       48       64  $Quota
+SID to OwnerID               $O       4       4        4        4  $Quota
+Object ID to MFT entry       $O      16      16       56       56  $ObjId and its extent entries
+Mounting points              $R      12      12        0        0  $Reparse
+
+$LogFile operation                    IsArray  DataType          Redo(max/min)  Undo(max/min)
+                          Noop:0x00:           -                      0/0        45908/0
+         CompensationLogRecord:0x01:           ?                      -/-            8/8
+   InitializeFileRecordSegment:0x02:           MFT hdr              680/136         26/26
+   DeallocateFileRecordSegment:0x03:           -                      0/0            0/0
+   WriteEndOfFileRecordSegment:0x04:           Attr hdr               -/-            -/-
+               CreateAttribute:0x05:           Attr hdr             152/24         760/24
+               DeleteAttribute:0x06:           -                      0/0            0/0
+           UpdateResidentValue:0x07:           RAW data             721/0          512/0
+        UpdateNonresidentValue:0x08:           RAW data            1944/560          -/-
+            UpdateMappingPairs:0x09:           RAW data              18/0          635/0
+           DeleteDirtyClusters:0x0A:     +     LCN range              -/-            -/-
+          SetNewAttributeSizes:0x0B:     +     Attr size             24/24          24/24
+             AddIndexEntryRoot:0x0C:           Idx entry            128/88         128/96
+          DeleteIndexEntryRoot:0x0D:           -                      0/0            0/0
+       AddIndexEntryAllocation:0x0E:           Idx entry            168/88         144/88
+    DeleteIndexEntryAllocation:0x0F:           -                      0/0            0/0
+         WriteEndOfIndexBuffer:0x10:           Idx entry             16/16        1984/1984
+          SetIndexEntryVcnRoot:0x11:           VCN                    8/8            8/8
+    SetIndexEntryVcnAllocation:0x12:           VCN                    8/8            8/8
+            UpdateFileNameRoot:0x13:           File metadata         56/56          56/56
+      UpdateFileNameAllocation:0x14:           File metadata         56/56          56/56
+    SetBitsInNonresidentBitMap:0x15:           Bits range             8/8            8/8
+  ClearBitsInNonresidentBitMap:0x16:           Bits range             8/8            8/8
+                        HotFix:0x17:           -                      -/-            -/-
+             EndTopLevelAction:0x18:           -                      -/-            -/-
+            PrepareTransaction:0x19:           -                      -/-            -/-
+             CommitTransaction:0x1A:           -                      -/-            -/-
+             ForgetTransaction:0x1B:           -                      0/0            -/-
+      OpenNonresidentAttribute:0x1C:     +     Open Attr w/ name     44/44           -/-
+        OpenAttributeTableDump:0x1D:     +     Open Attr          19384/17272        -/-
+            AttributeNamesDump:0x1E:     +     Attr name           6108/5436         -/-
+            DirtyPageTableDump:0x1F:     +     Dirty page         11288/1432         -/-
+          TransactionTableDump:0x20:     +     Transaction entry    224/224          -/-
+          UpdateRecordDataRoot:0x21:           -                      -/-            -/-
+    UpdateRecordDataAllocation:0x22:           -                      -/-            -/-
+
+Some unsorted $MFT observations:
+ * data of resident attribute should be aligned on 8 bytes
+ * if file size is zero then corresponding MFT entry has resident $DATA
+   attribute with zero data size or non-resident $DATA attribute with single
+   zero mapping pair (len_sz = 0 and off_sz = 0)
+ * last attribute (of type 0xffffffff) always occupies 8 bytes: type and
+   length fields of attribute header, but length field could contain any value
+   (in some realizations of driver, length field contains the following magic
+   number: 0x11477982)
+ * size of index block is always greater or equal to cluster size
+ * index block is never fragmented: all clusters of same block described
+   by signle mapping pair
+ * inside the $INDEX_ROOT attribute, array of index elements starts immediatly
+   after index node header
+ * inside index record, header of index node and array of index elements are
+   delimited by USA, so offset field of index node contains value greater than
+   node header length
+ * array of index entries aligned on 8 byte boundary
+ * in some very rare cases, there are some additional space (larger than
+   required for alignment) between USA and array of entries
+ * each index entry in array aligned on 8 bytes boundary
+ * size of index entry is always aligned on 8 bytes
+ * each index node (even leaf) has an empty entry at the end of entries array
+ * size of allocated space of $INDEX_ROOT attribute is always equal to real
+   size of index node
+ * NTFS does not reserve any space in index node inside $INDEX_ROOT attribute
+ * in some rare cases, MFT entry, which is allocated for directory, could
+   contain $DATA attribute
+ * if block marked as internal node, then all its entries have a descendants
+ * in some rate cases, MFT entry, which is allocated for file, could contain
+   an index (this is true for special files like $ObjId or $Secure)
+ * one MFT entry could contain multiple indexes (e.g. $Secure)
+ * only $FILE_NAME attribute could be specified as indexed attribute, other
+   indexes have zero in idx_attr field in the header of index root
+ * content of $FILE_NAME attribute is more accurate in index, than in MFT
+   entry themself, since $FILE_NAME in MFT entry updated only when file name
+   changes
+ * $FILE_NAME in $I30 carries almost identical copy of $STANDARD_INFO data
+   (same flags, same timestamps)
+ * very often $STANDARD_INFO flags field does not have IDX_I30 flag for
+   directories
+ * sizes in $FILE_NAME in $I30 account only default data stream size (without
+   alternate streams)
+ * size fields in $FILE_NAME attribute in $I30 index, account only the data
+   size of default stream (without alternate streams)
+ * allocated size field for resident data in $FILE_NAME in $I30 accounts whole
+   space after data start till $DATA attribute end, in other words allocated
+   size could not be fetched from data_size field of resident $DATA attribute.
+ * each part of mapping pair (length and offset) are threated as signed field,
+   since negative length is senseless then if MSB of length field is 1 then we
+   add additional octet of zeroes to this field
+ * attributes inside item MFT entry are ordered by type and then by its name,
+   unnamed attributes ordered randomly (looks like they ordered by moment of
+   creation)
+ * looks like NTFS (at least WinXP driver) compress only default data stream
+   and store alternative streams as-is
+
+Some unsorted $MFT oservations related to attribute id (instance)
+management:
+ * attribute id should be unique inside item MFT entry
+ * attribute id updated each time when attribute fully rebuilded
+    * attribute id updated on:
+       * attribute creation
+       * file renaming (id of $FILE_NAME attribute updated)
+       * resident attribute become non-resident
+    * attribute id not updated on:
+       * attribute data updation (e.g. timestamps in $STANDARD_INFO)
+       * reducing/enlarging of attribute content (e.g. $DATA attribute)
+ * looks like non-resident attribute could not become resident, if disk have
+   no free space, then NTFS reallocates whole MFT entry (its seqno is
+   incremented) and in such case non-resident attribute could become resident
+   again
+ * $STANDARD_INFO id in most cases is 0, but sometime it could be 1, in such
+   cases $OBJECT_ID attribute have id 0.
+ * if you have two $FILE_NAME attributes then they have id 2 and 3 (2 is for
+   WIN32 name and 3 is for DOS name), if you have only one $FILE_NAME
+   attribute (DOS+WIN32) then it have id 2.
+ * usually DOS $FILE_NAME attribute goes first, and then goes attribute with
+   WIN32 name, but in fact this order looks random and you can found MFT
+   entries with any order
+ * $DATA attribute id inside extent MFT entries is always 0
+ * $DATA attribute id inside base MFT entry is 1 just after creation, but most
+   probably it will be 3 or 4 due to resident -> non-resident transition
+ * $INDEX_ROOT attribute like $DATA attribute have id 1 or 6 or 5
+ * $INDEX_ALLOCATION attribute id in extent MFT entries is always 0
+ * $INDEX_ALLOCATION attribute id in base entry most probably is: 4 or 3
+ * $BITMAP attribute id most probably is: 5 or 4
+ * $OBJECT_ID attribute id most probably is: 5 or 4
+
+Most popular attribute sets (each item is type-id pair) is:
+MFT entry    Overal %  Per-type %  Layout
+File Base        38.9        42.2  (0x10 0) (0x30 3) (0x30 2) (0x80 4)
+                 34.1        37.0  (0x10 0) (0x30 2) (0x80 3)
+                  4.8         5.2  (0x10 0) (0x30 2) (0x80 4)
+File Extent       0.1        99.1  (0x80 0)
+Dir  Base         2.5        32.8  (0x10 0) (0x30 2) (0x90 1)
+                  1.6        21.2  (0x10 0) (0x30 3) (0x30 2) (0x90 6) (0xA0 4) (0xB0 5)
+                  1.6        20.2  (0x10 0) (0x30 2) (0x90 5) (0xA0 3) (0xB0 4)
+                  1.5        18.8  (0x10 0) (0x30 3) (0x30 2) (0x90 1)
+Dir  Extent       0.0       100.0  (0xA0 0)
+
+Attribute id values probability (actually sensless statistics):
+0  .27966     4  .15680     8  .00016    12  .00001
+1  .02358     5  .02199     9  .00010    13  .00008
+2  .25803     6  .00873    10  .00003    14  .00021
+3  .24949     7  .00097    11  .00003    15  .00001
+
+Attribute id global (and per attribute type) probabilities:
+               0          1          2          3          4          5          6           7
+All MFT entries:
+0x10: .279(1.00) .000(.000)          -          -          -          -          -           -
+0x20:          -          -          -          - .000(.250) .000(.483) .000(.095) .000(0.017)
+0x30:          - .000(.000) .258(.618) .134(.322) .016(.039) .007(.016) .002(.005) .000(0.000)
+0x40: .000(.003)          -          - .000(.029) .001(.189) .002(.718) .000(.036) .000(0.012)
+0x80: .000(.001) .012(.046) .000(.000) .110(.426) .130(.503) .003(.013) .001(.005) .001(0.002)
+0x90:          - .012(.539) .000(.000) .000(.000) .000(.000) .004(.203) .005(.245) .000(0.010)
+0xa0: .000(.002)          -          - .005(.489) .005(.507) .000(.000) .000(.000) .000(0.000)
+0xb0:          -          -          -          - .005(.490) .005(.507) .000(.000) .000(0.001)
+File base MFT entries:
+0x10: .285(1.00) .000(.000)          -          -          -          -          -          -
+0x20:          -          -          -          - .000(.293) .000(.566) .000(.111)          -
+0x30:          - .000(.000) .262(.613) .138(.323) .018(.041) .007(.017) .002(.005) .000(.000)
+0x40: .000(.003)          -          - .000(.029) .001(.191) .003(.730) .000(.031) .000(.005)
+0x80:          - .013(.046) .000(.000) .121(.427) .143(.504) .004(.013) .001(.005) .001(.002)
+0x90:          -          - .000(.167) .000(.167) .000(.167)          -          - .000(.167)
+0xb0:          -          -          -          - .000(.250) .000(.250)          -          -
+File extent MFT entries:
+0x80: .991(1.00)          -          -          -          -          -          -          -
+0xA0: .005(.500)          -          -          -          -          -          - .002(.250)
+Dir base MFT entries:
+0x10: .229(1.00)          -          -          -          -          -          -          -
+0x20:          -          -          -          -          -          -          - .000(.118)
+0x30:          - .000(.000) .224(.678) .101(.307) .004(.012) .000(.000) .000(.000) .000(.001)
+0x40:          -          -          - .000(.029) .000(.101)          - .000(.333) .000(.478)
+0x80:          -          -          -          -          -          - .000(.500)          -
+0x90:          - .123(.539) .000(.000) .000(.000) .000(.000) .046(.203) .056(.245) .002(.010)
+0xa0:          -          -          - .052(.490) .053(.508) .000(.000) .000(.000) .000(.000)
+0xb0:          -          -          -          - .052(.490) .053(.507) .000(.000) .000(.001)
+0xc0:          -          -          - .000(.200) .000(.800)          -          -          -
+Dir extent MFT entries:
+0xa0: 1.00(1.00)          -          -          -          -          -          -          -
+
+Some unsorted $LogFile observations:
+ * Record page header aligned on 8 bytes boundary
+ * Checkpoint record have both redo & undo operations set to Noop
+ * In non-checkpoint records Noop undo operation always have 8 bytes of data,
+   when accomplish OpenNonresidentAttribute redo operation

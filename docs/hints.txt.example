@@ -1,0 +1,134 @@
+# hints example file
+#
+# The file format is simple: each line except empty and comments lines is
+# the item hint, comment lines starts from '#' symbol. Each hint described
+# by single line.
+#
+# NTFS is file centric and in most cases file is described by one MFT entry,
+# which contains all information about this file or contains links to this
+# information. So each hint in this file tweaks the recovery process of only
+# one MFT entry or it associated data.
+#
+# Hint line consists of four elements each of which is mandatory and it
+# general format is:
+# <MFT entry #>-<class>-<type> = <value>
+#
+# where:
+#   <MFT entry #> is MFT entry number
+#   <class>       is the hints class
+#   <type>        is the hint type within specified class
+#
+# The class and type identifiers can be followed by additional arguments,
+# which specify the hint scope. Such additional arguments should be
+# specified in brackets and delimited by commas. So the full format template
+# looks like:
+# <MFT entry #>-<class>[(carg1[,...])]-<type>[(targ1[,...])] = <value>
+#
+# There are four classes of hints:
+#   - metadata hints   - specify info, applicable for whole file (e.g.
+#                        timestamps, security identifier, etc.)
+#   - index node hints - controll item index node recovery
+#   - data hints       - controll item data stream recovery (e.g. stream
+#                        allocated size, allocated clusters, etc.)
+#   - attribute hints  - controll item MFT entry attribute recovery
+#
+# Metadata hints class:
+#   - token: meta
+#   - arguments: not supported
+#   - format: <MFT entry #>-meta-<type> = value
+#   - includes following types of hints:
+#      - parent      - specifies parent directory (by it MFT entry number)
+#      - seqno       - specifies MFT entry sequence number
+#      - filename    - specifies filename
+#      - time_create - specifies creation timestamp
+#      - time_change - specifies file modification timestamp
+#      - time_mft    - specifies MFT entry modification timestamp
+#      - time_access - specifies file access timestamp
+#      - fileflags   - specifies file flags
+#      - sid         - specifies file security ID
+#
+# Examples:
+#   - set parent of MFT entry #1234 to #175:
+#       1234-meta-parent = 175
+#   - set security id of MFT entry #4321 to 0x1b4
+#       4321-meta-sid = 0x1b4
+#   - set access timestamp of MFT entry #2345 to 'Tue May 10 09:08:07 UTC 2016':
+#       2345-meta-time_access = 0x01D1AABCFE735580
+#
+# Index node hints class:
+#   - token: idxn
+#   - arguments: index name, node VCN
+#   - format: <MFT entry #>-idxn(<idx name>, <idx node VCN>)-<type> = value
+#   - includes following types of hints:
+#       - reserve     - specifies ammount of additionally reserved space
+#                       before the index node header
+#
+# Examles:
+#   - reserve 0x18 bytes before index node (VCN=8) header of $I30 index of
+#     MFT entry #175:
+#       175-idxn($I30,8)-reserve=0x18
+#
+# Data hints class:
+#   - token: data
+#   - arguments:
+#      - data stream name (unnamed (default) if not specified)
+#   - format: <MFT entry #>-data[(<stream name>)]-<type> = <value>
+#   - includes following types of hints:
+#       - sz_alloc - specifies allocated space of data stream
+#       - sz_used  - specifies actual size of data stream
+#       - sz_init  - specifies initialized size of data stream
+#       - cls      - specifies list of clusters allocated for data stream
+#       - raw      - specifies raw data of stream (facilitate user data recovery)
+#       - bbignore - specifies that all unrecovered bad blocks of data stream
+#                    should be ignored (reduce ammount of noise from statistic
+#                    scripts)
+#       - digest   - specifies MD5 digest of data stream (used for
+#                    selfchecking purposes)
+#
+#  Clusters list hint value contains sequence of pairs of LCN:length, delimited
+#  by commas. LCN is logical cluster number - item cluster offset inside
+#  partition. Length also specified in clusters. Length part could be omited.
+#  So generic format of clusters list is:
+#  <LCN1>[:<CLEN1>][,<LCN2>[:<CLEN2>][,...]]
+#
+#  Raw data hint specifies data indirectly: its value is the name of the file,
+#  which content will be written in the specified position of the data stream.
+#  Raw data hint accepts not more than 3 optional arguments:
+#      - virtual offset of the segment inside data stream (0 if not specified)
+#      - segment length (reference file length if not specified)
+#      - offset inside reference file (0 if not specified)
+#  Raw data hint format: <MFT entry #>-data[(<stream name>)]-raw[(<voff>[,<len>[,<foff>]])] = <reference file name>
+#
+# Examples:
+#   - set data size inside the default stream in MFT entry #1234 to 0x2340:
+#      1234-data-sz_used = 0x2340
+#   - set allocated size of 'Foo' alternative stream in MFT entry #4321 to 0x1000:
+#      4321-data(Foo)-sz_alloc = 0x1000
+#   - specify that the default data stream of MFT entry #2345 consists of
+#     clusters 345634..345639, 234234, 98482..98484:
+#      2345-data-cls = 345634:6,234234,98482:3
+#   - use foo.dll file extracted from original distro to recover
+#     /Program Files/Bar/foo.dll file, corrupted by bad blocks at 0x0400 and
+#     at 0x0800, file MFT entry number is 1234:
+#      1234-data-raw(0x400,0x200,0x400)=/tmp/unpacked-bar-distro/foo.dll
+#      1234-data-raw(0x800,0x200,0x800)=/tmp/unpacked-bar-distro/foo.dll
+#
+# Attributes hints class:
+#   - token: attr
+#   - arguments:
+#      - attribute type (required, e.g. $FILE_NAME, $DATA, etc.),
+#      - attribute name (required),
+#      - aux selector (used to select WIN32/DOS $FILE_NAME attribute)
+#   - format: <MFT entry #>-attr(<type>,<name>[,<selector>])-<type> = <value>
+#   - includes following types of hints:
+#       - id    - specifies attribute id
+#
+# Examples:
+#   - tune index related attributes id of MFT entry #175:
+#       175-attr($INDEX_ROOT,$I30)-id = 3
+#       175-attr($INDEX_ALLOCATION,$I30)-id = 4
+#       175-attr($BITMAP,$I30)-id = 5
+#   - configure id for DOS and WIN32 $FILE_NAME attributes of MFT entry #1234
+#       1234-attr($FILE_NAME,,2) = 3
+#       1234-attr($FILE_NAME,,1) = 4
+
