@@ -97,8 +97,8 @@ static int main_sqlite_dump_sources(void)
 		"VALUES (:id, :name, :desc)";
 	static const struct {
 		unsigned id;
-		const char const *name;
-		const char const *desc;
+		const char * const name;
+		const char * const desc;
 	} sources[] = {
 		{NHR_SRC_NONE, "None", "No data"},
 		{NHR_SRC_HEUR, "Heur", "Heuristic assumption"},
@@ -209,7 +209,7 @@ static int main_sqlite_dump_param(void)
 	static const char *q_insert = "INSERT INTO param (name, val)"
 		"VALUES (?1, ?2)";
 	static const struct {
-		const char const *name;
+		const char * const name;
 		unsigned sz;
 		const void *data;
 	} params[] = {

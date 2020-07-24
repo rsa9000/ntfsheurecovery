@@ -60,16 +60,16 @@ struct hint_args {
 };
 
 struct hint_info {
-	const char const *name;
-	const char const *tok;
+	const char * const name;
+	const char * const tok;
 	const struct hint_args args;
 	int (*parser)(struct hints_parse_ctx *);
 	const char * (*dump)(const struct hint *);
 };
 
 struct hint_class_info {
-	const char const *name;
-	const char const *tok;
+	const char * const name;
+	const char * const tok;
 	const struct hint_args cargs;
 	const struct hint_info *hints;
 	unsigned hints_num;

@@ -29,7 +29,7 @@ struct nhr_idx_info {
 	int type;
 	uint8_t name[10];
 	unsigned name_len;
-	const char const *desc;
+	const char * const desc;
 	unsigned attr;		/* Attribute in index (or zero) */
 	unsigned sort;		/* Sorting rule, see NTFS_IDX_SORT_xxx */
 	unsigned key_sz_min;
