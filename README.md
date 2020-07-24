@@ -50,7 +50,7 @@ To build ntfsheurecovery from sources, just run the following command:
 
     make
 
-After build process finished you will get two binaries:
+After build process finished you will get two binaries located in the `bin` folder:
 
   * ntfsheurecoveryand
   * untfspk
