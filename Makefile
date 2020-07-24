@@ -57,7 +57,7 @@ LDFLAGS_REC += $(shell pkg-config --libs sqlite3)
 all: $(DEPDIR) $(TGT_REC) $(TGT_UPK)
 
 $(TGT_REC): $(OBJ_REC)
-	$(CC) $(LDFLAGS_REC) -o $@ $(OBJ_REC)
+	$(CC) -o $@ $(OBJ_REC) $(LDFLAGS_REC)
 
 $(TGT_UPK): $(OBJ_UPK)
 	$(CC) -o $@ $(OBJ_UPK)
